@@ -375,66 +375,7 @@ void loop() {
       client.publish(mqtt_topic, json_value);
 
       if (lights) {
-        // CO2 LED - horni
-        if(co2 < 1000){
-          setColorWS(0, 255, 0, CO2_LED);
-        }
-        
-        //svetle zelena
-        if((co2 >= 1000) && (co2 < 1200)){
-          setColorWS(128, 255, 0, CO2_LED);
-        }
-        
-        // zluta
-        if((co2 >= 1200) && (co2 < 1500)){
-        setColorWS(255, 255, 0, CO2_LED);
-        }
-        
-        //oranzova
-        if((co2 >= 1500) && (co2 < 2000)){
-          setColorWS(255, 128, 0, CO2_LED);
-        }
-        
-        if(co2 >= 2000){
-          setColorWS(255, 0, 0, CO2_LED);
-        }
-
-        // Temperature LED
-        if(temperature < 19.0){
-          setColorWS(0, 0, 255, TEMP_LED);
-        }
-
-        if((temperature >= 19.0) && (temperature < 21.0)){
-          setColorWS(0, 255, 0, TEMP_LED);
-        }
-
-        if(temperature >= 21.0){
-          setColorWS(255, 0, 0, TEMP_LED);
-        }
-
-        // PM LED - spodni
-        if(pm2_5 < 30){
-          setColorWS(0, 255, 0, PM_LED);
-        }
-        
-        // svetle zelena
-        if((pm2_5 >= 30) && (pm2_5 < 40)){
-          setColorWS(128, 255, 0, PM_LED);
-        }
-        
-        // zluta
-        if((pm2_5 >= 40) && (pm2_5 < 80)){
-        setColorWS(255, 255, 0, PM_LED);
-        }
-        
-        // oranzova
-        if((pm2_5 >= 80) && (pm2_5 < 90)){
-          setColorWS(255, 128, 0, PM_LED);
-        }
-        
-        if(pm2_5 >= 90){
-          setColorWS(255, 0, 0, PM_LED);
-        }
+        lights_on();
       } // if lights on
     }
   }
