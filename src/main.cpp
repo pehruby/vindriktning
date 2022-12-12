@@ -55,7 +55,7 @@ void alert(int id){
   while (1){
      if (i > 10){
       Serial.println("Maybe need Reboot...");
-      //ESP.restart();
+      ESP.restart();
       break;
      }
      rgbWS.setBrightness(255);
@@ -143,36 +143,40 @@ void lights_on(void) {
 
 void callback(char* topic, byte* message, unsigned int length) {
   char mqtt_topic[40];
+  char json_value[150];
+  String messageLight;
 
   Serial.print("Message arrived on topic: ");
   Serial.print(topic);
   Serial.print(". Message: ");
-  String messageTemp;
   
   for (int i = 0; i < length; i++) {
     Serial.print((char)message[i]);
-    messageTemp += (char)message[i];
+    messageLight += (char)message[i];
   }
   Serial.println();
 
   // Feel free to add more if statements to control more GPIOs with MQTT
-  sprintf(mqtt_topic,"vindriktning/%s/lights", scd41_serial_str);
+  sprintf(mqtt_topic,"vindriktning/%s/lights/set", scd41_serial_str);
   // If a message is received on the topic esp32/output, you check if the message is either "on" or "off". 
   // Changes the output state according to the message
   if (String(topic) == mqtt_topic) {
     Serial.print("Changing output to ");
-    if(messageTemp == "on"){
+    if(messageLight == "on"){
       Serial.println("on");
       lights = true;
       lights_on();
       // digitalWrite(ledPin, HIGH);
     }
-    else if(messageTemp == "off"){
+    else if(messageLight == "off"){
       lights = false;
       Serial.println("off");
       lights_off();
       // digitalWrite(ledPin, LOW);
     }
+    sprintf(mqtt_topic,"vindriktning/%s/lights", scd41_serial_str);
+    sprintf(json_value,"{\"switch\": \"%s\"}", messageLight);
+    client.publish(mqtt_topic, json_value);
   }
 }
 
@@ -185,10 +189,10 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP8266Client")) {
+    if (client.connect("Vindriktning")) {
       Serial.println("connected");
       // Subscribe
-      sprintf(mqtt_topic,"vindriktning/%s/lights", scd41_serial_str);
+      sprintf(mqtt_topic,"vindriktning/%s/lights/set", scd41_serial_str);
       client.subscribe(mqtt_topic);
     } else {
       Serial.print("failed, rc=");
@@ -291,8 +295,9 @@ void loop() {
   char humiString[8];
   char co2String[8];
   char pm2_5String[8];
-  char json_value[100];
+  char json_value[150];
   char mqtt_topic[40];
+  char messageLight[5];
 
 
   if (!client.connected()) {
@@ -301,7 +306,7 @@ void loop() {
   // delay(2000);
   client.loop();
   long now = millis();
-  if (now - lastMsg > 30000) {
+  if (lastMsg == 0 or (now - lastMsg > 120000)) {
     lastMsg = now;
     
     if (WiFi.status() == WL_CONNECTED) {
@@ -361,12 +366,17 @@ void loop() {
 
 
     
+      if (lights)
+        strcpy(messageLight,"on");
+      else
+        strcpy(messageLight,"off");
       dtostrf(temperature, 1, 2, tempString);
       dtostrf(humidity, 1, 2, humiString);
       dtostrf(co2, 1, 0, co2String);
       dtostrf(pm2_5, 1, 0, pm2_5String);
       sprintf(mqtt_topic,"vindriktning/%s", scd41_serial_str);
       sprintf(json_value,"{\"temperature\": %s, \"humidity\": %s, \"co2\": %s, \"pm25\": %s}", tempString, humiString, co2String, pm2_5String);
+      //sprintf(json_value,"{\"temperature\": %s, \"humidity\": %s, \"co2\": %s, \"pm25\": %s}", tempString, humiString, co2String, pm2_5String);
 
       Serial.print("MQTT: ");
       Serial.print(mqtt_topic);
@@ -376,7 +386,7 @@ void loop() {
 
       if (lights) {
         lights_on();
-      } // if lights on
+      }
     }
   }
   // delay(30000);
