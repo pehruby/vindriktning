@@ -21,8 +21,15 @@
 #define PIN_AMBIENT_LIGHT 4
 #define DN 3700 // night level
 
+#define LOOP_MS 120000
 #define TEMP_OFFSET 3.02
 
+void setColorWS(byte r, byte g, byte b, int id);
+void alert(int id);
+void lights_off(void);
+void lights_on(void);
+void callback(char* topic, byte* message, unsigned int length);
+void reconnect();
 
 char scd41_serial_str[20];
 
@@ -30,11 +37,10 @@ uint16_t co2;
 float temperature;
 float humidity;
 uint16_t pm2_5;
+uint brightness = 50;
 
 boolean lights = true;
 long lastMsg = 0;
-
-void callback(char* topic, byte* message, unsigned int length);
 
 WiFiClient espClient;
 PubSubClient client(mqtt_server ,1883, callback, espClient);
@@ -61,7 +67,7 @@ void alert(int id){
      rgbWS.setBrightness(255);
      setColorWS(255, 0, 0, id); 
      delay(200);
-     rgbWS.setBrightness(BRIGHTNESS);
+     rgbWS.setBrightness(brightness);
      setColorWS(0, 0, 0, id);
      delay(200);
      i++;
@@ -141,10 +147,14 @@ void lights_on(void) {
   
 }
 
+// Process received MQTT message
 void callback(char* topic, byte* message, unsigned int length) {
   char mqtt_topic[40];
   char json_value[150];
   String messageLight;
+  char messagestr[20];
+
+  int tmpbrightness=0;
 
   Serial.print("Message arrived on topic: ");
   Serial.print(topic);
@@ -153,13 +163,16 @@ void callback(char* topic, byte* message, unsigned int length) {
   for (int i = 0; i < length; i++) {
     Serial.print((char)message[i]);
     messageLight += (char)message[i];
+    messagestr[i] = (char)message[i];
   }
+  messagestr[length] = '\0';
   Serial.println();
+  Serial.print("Length: ");
+  Serial.println(length);
 
-  // Feel free to add more if statements to control more GPIOs with MQTT
+  
+  // MQTT message for vindriktning/0xhhhhhhhhhhhh/lights/set ?
   sprintf(mqtt_topic,"vindriktning/%s/lights/set", scd41_serial_str);
-  // If a message is received on the topic esp32/output, you check if the message is either "on" or "off". 
-  // Changes the output state according to the message
   if (String(topic) == mqtt_topic) {
     Serial.print("Changing output to ");
     if(messageLight == "on"){
@@ -178,12 +191,26 @@ void callback(char* topic, byte* message, unsigned int length) {
     sprintf(json_value,"{\"switch\": \"%s\"}", messageLight);
     client.publish(mqtt_topic, json_value);
   }
+  sprintf(mqtt_topic,"vindriktning/%s/brightness/set", scd41_serial_str);
+  if (String(topic) == mqtt_topic) {
+    
+    tmpbrightness=atoi(messagestr);
+    if (tmpbrightness != 0) {
+      brightness = tmpbrightness;
+      rgbWS.setBrightness(brightness);
+      Serial.print("Brightness set to ");
+      Serial.println(brightness);
+      if (lights) {
+        lights_on();
+      }
+    }
+  }
 }
 
 
 void reconnect() {
 
-  char mqtt_topic[40];
+  char mqtt_topic[50];
 
   // Loop until we're reconnected
   while (!client.connected()) {
@@ -193,6 +220,8 @@ void reconnect() {
       Serial.println("connected");
       // Subscribe
       sprintf(mqtt_topic,"vindriktning/%s/lights/set", scd41_serial_str);
+      client.subscribe(mqtt_topic);
+      sprintf(mqtt_topic,"vindriktning/%s/brightness/set", scd41_serial_str);
       client.subscribe(mqtt_topic);
     } else {
       Serial.print("failed, rc=");
@@ -214,7 +243,7 @@ void setup() {
   uint16_t serial2;
   
   rgbWS.begin(); // WS2718
-  rgbWS.setBrightness(BRIGHTNESS);
+  rgbWS.setBrightness(brightness);
   
   Serial.begin(115200);
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
@@ -283,7 +312,6 @@ void setup() {
       alert(CO2_LED);
   }
 
-  Serial.println("Waiting for first measurement... (5 sec)");
 }
 
 void loop() {
@@ -301,35 +329,21 @@ void loop() {
 
 
   if (!client.connected()) {
+      // connect to MQTT server, subscribe to topic
       reconnect();
   }
-  // delay(2000);
+  // check if MQTT message was received
   client.loop();
   long now = millis();
-  if (lastMsg == 0 or (now - lastMsg > 120000)) {
+  // perform meassurement each LOOP_MS miliseconds
+  if (lastMsg == 0 or (now - lastMsg > LOOP_MS)) {
     lastMsg = now;
     
-    if (WiFi.status() == WL_CONNECTED) {
-      al = 4000;
-      Serial.println("Ambient light cannot be measured - WiFi in use");
-    } else {
-      al = analogRead(PIN_AMBIENT_LIGHT);
-      Serial.print("Ambient light: ");
-      Serial.println(al); 
-    }
-
-    if (al >= DN){
-      rgbWS.setBrightness(BR_NIGHT);
-    }else{
-      rgbWS.setBrightness(BRIGHTNESS);
-    }
-    
-    
+    // start fan for 10sec
     digitalWrite(PIN_FAN, HIGH);
     Serial.println("Fan ON");
     delay(10000);
 
-    //uint16_t pm2_5;
     if (pm1006.read_pm25(&pm2_5)) {
       printf("PM2.5 = %u\n", pm2_5);
     } else {
@@ -341,9 +355,8 @@ void loop() {
     digitalWrite(PIN_FAN, LOW);
     Serial.println("Fan OFF");
     
-    //uint16_t co2;
-    //float temperature;
-    //float humidity;
+
+    // read CO2, temperature and humidity from SCD
     error = scd4x.readMeasurement(co2, temperature, humidity);
     if (error) {
       Serial.print("SCD41 Error trying to execute readMeasurement(): ");
@@ -365,23 +378,19 @@ void loop() {
       Serial.println(humidity);
 
 
-    
-      if (lights)
-        strcpy(messageLight,"on");
-      else
-        strcpy(messageLight,"off");
+      // convert values to strings
       dtostrf(temperature, 1, 2, tempString);
       dtostrf(humidity, 1, 2, humiString);
       dtostrf(co2, 1, 0, co2String);
       dtostrf(pm2_5, 1, 0, pm2_5String);
       sprintf(mqtt_topic,"vindriktning/%s", scd41_serial_str);
       sprintf(json_value,"{\"temperature\": %s, \"humidity\": %s, \"co2\": %s, \"pm25\": %s}", tempString, humiString, co2String, pm2_5String);
-      //sprintf(json_value,"{\"temperature\": %s, \"humidity\": %s, \"co2\": %s, \"pm25\": %s}", tempString, humiString, co2String, pm2_5String);
 
       Serial.print("MQTT: ");
       Serial.print(mqtt_topic);
       Serial.print(" ");
       Serial.println(json_value);
+      // publish values to MQTT server
       client.publish(mqtt_topic, json_value);
 
       if (lights) {
@@ -389,6 +398,5 @@ void loop() {
       }
     }
   }
-  // delay(30000);
 }
 
