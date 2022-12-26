@@ -22,7 +22,7 @@
 #define DN 3700 // night level
 
 #define LOOP_MS 120000
-#define TEMP_OFFSET 3.02
+#define TEMP_OFFSET 4.5
 
 void setColorWS(byte r, byte g, byte b, int id);
 void alert(int id);
@@ -267,6 +267,12 @@ void setup() {
   setColorWS(0, 0, 0, PM_LED);
   setColorWS(0, 0, 0, TEMP_LED);
   setColorWS(0, 0, 0, CO2_LED);
+
+  digitalWrite(PIN_FAN, HIGH);
+  Serial.println("Fan ON");
+  delay(15000);
+  digitalWrite(PIN_FAN, LOW);
+  Serial.println("Fan OFF");
 
   // stop potentially previously started measurement
   error = scd4x.stopPeriodicMeasurement();
